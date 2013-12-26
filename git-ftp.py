@@ -190,7 +190,7 @@ def parse_ftpignore(rawPatterns):
     patterns = []
     for pat in rawPatterns:
         pat = pat.rstrip()
-	if not pat or pat.startswith('#'):
+        if not pat or pat.startswith('#'):
             continue
         patterns.append(pat)
     return patterns
