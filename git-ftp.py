@@ -145,6 +145,11 @@ def main():
             raise FtpSslNotSupported("Python is too old for FTP SSL. Try using Python 2.7 or later.")
     else:
         ftp = ftplib.FTP(options.ftp.hostname, options.ftp.username, options.ftp.password)
+
+    if not options.ftp.passive is None:
+        print ("FTP in Passive Mode" if options.ftp.passive else "Ftp not in Passive Mode")
+        ftp.set_pasv(options.ftp.passive)
+
     ftp.cwd(base)
 
     # Check revision
@@ -175,7 +180,7 @@ def main():
     if oldtree.hexsha == tree.hexsha:
         logging.info('Nothing to do!')
     else:
-        upload_diff(repo, oldtree, tree, ftp, [base], patterns)
+        upload_diff(repo, oldtree, tree, ftp, [base], patterns, options)
 
     ftp.storbinary('STOR git-rev.txt', cStringIO.StringIO(commit.hexsha))
     ftp.quit()
@@ -185,7 +190,7 @@ def parse_ftpignore(rawPatterns):
     patterns = []
     for pat in rawPatterns:
         pat = pat.rstrip()
-        if not pat or pat.startswith('#'):
+	if not pat or pat.startswith('#'):
             continue
         patterns.append(pat)
     return patterns
@@ -252,6 +257,8 @@ class FtpData():
     remotepath = None
     ssl = None
     gitftpignore = None
+    chmodfiles = True
+    passive = None
 
 
 def get_ftp_creds(repo, options):
@@ -306,6 +313,17 @@ def get_ftp_creds(repo, options):
             options.ftp.gitftpignore = cfg.get(options.section, 'gitftpignore')
         except ConfigParser.NoOptionError:
             options.ftp.gitftpignore = '.gitftpignore'
+
+        try:
+            options.ftp.chmodfiles = boolish(cfg.get(options.section, 'chmodfiles'))
+        except ConfigParser.NoOptionError:
+	    options.ftp.chmodfiles = True
+
+        try:
+            options.ftp.passive = boolish(cfg.get(options.section, 'passive'))
+        except ConfigParser.NoOptionError:
+            options.ftp.passive = None
+
     else:
         print "Please configure settings for branch '%s'" % options.section
         options.ftp.username = raw_input('FTP Username: ')
@@ -333,7 +351,7 @@ def get_empty_tree(repo):
     return repo.tree(repo.git.hash_object('-w', '-t', 'tree', os.devnull))
 
 
-def upload_diff(repo, oldtree, tree, ftp, base, ignored):
+def upload_diff(repo, oldtree, tree, ftp, base, ignored, options):
     """
     Upload  and/or delete items according to a Git diff between two trees.
 
@@ -352,6 +370,7 @@ def upload_diff(repo, oldtree, tree, ftp, base, ignored):
                For example, base = ['www', 'www']. base must exist and must not
                have a trailing slash.
     ignored -- The list of patterns explicitly ignored by gitftpignore.
+    options -- The options of git-ftp
 
     """
     # -z is used so we don't have to deal with quotes in path matching
@@ -412,7 +431,7 @@ def upload_diff(repo, oldtree, tree, ftp, base, ignored):
                         pass
 
             if isinstance(node, Blob):
-                upload_blob(node, ftp)
+                upload_blob(node, ftp, options=options)
             else:
                 module = node.module()
                 module_tree = module.commit(node.hexsha).tree
@@ -445,7 +464,7 @@ def is_special_file(name):
     return posixpath.basename(name) in ['.gitignore', '.gitattributes', '.gitmodules']
 
 
-def upload_blob(blob, ftp, quiet=False):
+def upload_blob(blob, ftp, quiet=False, options=None):
     """
     Uploads a blob.  Pre-condition on ftp is that our current working
     directory is the root directory of the repository being uploaded
@@ -458,12 +477,14 @@ def upload_blob(blob, ftp, quiet=False):
     except ftplib.error_perm:
         pass
     ftp.storbinary('STOR ' + blob.path, blob.data_stream)
-    try:
-        ftp.voidcmd('SITE CHMOD ' + format_mode(blob.mode) + ' ' + blob.path)
-    except ftplib.error_perm:
-        # Ignore Windows chmod errors
-        logging.warning('Failed to chmod ' + blob.path)
-        pass
+
+    if options and options.ftp.chmodfiles:
+        try:
+            ftp.voidcmd('SITE CHMOD ' + format_mode(blob.mode) + ' ' + blob.path)
+        except ftplib.error_perm:
+            # Ignore Windows chmod errors
+	    logging.warning('Failed to chmod ' + blob.path)
+            pass
 
 
 def boolish(s):
