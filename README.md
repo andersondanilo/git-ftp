@@ -35,6 +35,8 @@ You can place FTP credentials in `.git/ftpdata`, as such:
     hostname=ftp.hostname.com
     remotepath=/htdocs
     ssl=yes
+    passive=yes
+    chmodfiles=no
 
     [staging]
     username=me
@@ -46,7 +48,7 @@ You can place FTP credentials in `.git/ftpdata`, as such:
 Each section corresponds to a git branch. FTP SSL support needs Python
 2.7 or later.
 
-Exluding certain files from uploading
+Excluding certain files from uploading
 -------------------------------------
 
 Similarly to `.gitignore` you can specify files which you do not wish to upload.
